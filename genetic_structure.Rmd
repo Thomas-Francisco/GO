@@ -1,0 +1,114 @@
+---
+title: "genetic_structure"
+author: "Thomas Francisco"
+date: "2024-01-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pcadapt)
+library(ggplot2)
+library(LEA)
+library(rnaturalearth)
+library(scatterpie)
+```
+
+The goal here is to analyse the genetic structure of the species and check if the structure of some individuals/populations is not drive by the Na. To do so, we will plot the size of the sampled points on the PCa depending on their Na percentage.
+```{r PCa with Na}
+
+#file with Na
+data_i= "C:/Users/tfrancisco/Documents/stage M2/2024_new_filtration/data.Rdata"
+load(file = data_i)
+
+#We're gonna used the Pcadapt function to perform the PCa. The format of the input dataset is: row: SNPs, columns: individuals
+
+#If necessary, transpose the dataset
+data_PCa <- data.frame(t(data))
+
+#format for pcadapt
+data_pcadapt <- read.pcadapt(data)
+
+#perform the Pca
+Pca <-pcadapt(data_pcadapt,K=10,method = "mahalanobis")
+
+#
+plot(Pca$singular.values, type="b")
+
+
+score_Pca <- data.frame(Pca$scores[,1:3]);row.names(data)=row.names(data)
+
+na_percentage <- rowMeans(is.na(data_PCa))*12.5
+
+ggplot_representation <- ggplot(data=score_Pca,aes(x=X1,y=X2))+
+  geom_point(size=na_percentage)
+
+ggplot_representation
+
+
+```
+
+# Ancestry coefficients
+
+Here we are going to use the LEA package to estimate the ancestry of the individuals. We are going to produce a map of the points and for each of them we will have a pie with his ancestry coefficients. 
+First, to use the LEA package, we need to transform the genetic dataset into the geno format (SNPs in rows, individuals in columns and 0,1,2, 9(for Nas)). 
+```{r LEA genetic structure}
+#replace the Na per 0 
+data_PCa_geno <- data.frame(replace(data_PCa, is.na(data_PCa),9)) 
+#write the file in geno format: 
+write.geno(data_PCa_geno,"C:/Users/tfrancisco/Documents/stage M2/2024_new_filtration/data_PCa_geno.geno")#here the input of write.geno is a dataset with individuals in rows, snps in columns and Na in 9
+
+#perform the ancestry calculation
+project_1 <- snmf("C:/Users/tfrancisco/Documents/stage M2/2024_new_filtration/data_PCa_geno.geno",K=1:10,entropy=T,repetitions=1,project="new")
+plot(project_1, col = "blue", pch = 19, cex = 1.2)
+
+#plot the results
+best = which.min(cross.entropy(project_1, K = 6))
+my.colors <- c("tomato", "lightblue",
+"olivedrab", "gold")
+barchart(project_1, K = 6, run = best,
+border = NA, space = 0,
+col = my.colors,
+xlab = "Individuals",
+ylab = "Ancestry proportions",
+main = "Ancestry matrix") -> bp
+axis(1, at = 1:length(bp$order),
+labels = bp$order, las=1,
+cex.axis = .4)
+
+#we can also output a matrix of the ancestry coeff for each individuals
+qmatrix = LEA::Q(project_1, K = 6)
+qmatrix_ID=data.frame(row.names(data_PCa_geno),qmatrix);colnames(qmatrix_ID)=c("ID","Group1","Group2","Group3","Group4","Group5","Group6")
+
+
+#The next step will be to create the map. For this, we first need to mean the values at the populations levels, add the coordinates and then plot this on a map.
+
+meta_data_vcf=read.csv("C:/Users/tfrancisco/Documents/stage M2/Worldclim/293_indiv.csv",h=T,sep=";",dec=",")
+data_tot_maps <- merge(meta_data_vcf[,c("ID","demes","Long..WGS84.","Lat..WGS84.")],qmatrix_ID,"ID");colnames(data_tot_maps)=c("ID", "Pop","Longitude","Latitude","Group1","Group2","Group3","Group4","Group5","Group6");data_tot_maps$Longitude=as.numeric(data_tot_maps$Longitude);data_tot_maps$Latitude=as.numeric(data_tot_maps$Latitude)
+
+#Map
+
+# Obtain the blank map of the region
+admin <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Plot the map with scatterpie
+map_pop <- ggplot() + 
+  geom_sf(data = admin, fill = gray(0.92), size = 0) +#background of the map
+  geom_scatterpie(
+    data = data_tot_maps,
+    aes(x = Longitude, y = Latitude),
+    cols = c("Group1", "Group2", "Group3","Group4","Group5","Group6"), # Adjust columns accordingly
+    size = 0,#size of the bold (=gras)
+    alpha = 1 #transparence
+  ) +
+  coord_sf(xlim = c(-2, 10), ylim = c(42, 48), expand = FALSE) +#extension of the map
+  theme_minimal() +
+  labs(title = "Genetic Structure for each Populations")
+
+print(map_pop)
+
+
+
+```
+
+
