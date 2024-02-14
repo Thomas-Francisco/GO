@@ -1,0 +1,480 @@
+---
+title: "new_script_climatic_data"
+author: "Thomas Francisco"
+date: "2023-12-19"
+output: html_document
+---
+
+---
+title: "Climatic_data"
+author: "Thomas Francisco"
+date: "2023-12-16"
+output: html_document
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = FALSE)
+library(tidyr)
+library(rmarkdown)
+library(rnaturalearth)
+library(viridis) 
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(tidyr)
+library(sf)
+library(knitr)
+library(corrplot)
+library(writexl)
+
+```
+
+This script is a pipeline to process the climatic/environmental data from the row output of *ClimateDT* (or any program that would give data in an excel with all the years of climatic data) to a dataframe with center and reduce the choosen variables for past/present and future climatic data.
+This script is separated in different steps:
+
+-   Download the data
+
+
+**1.  First, you need to download the data. For this, you need**:
+    
+  -   the present/past and future climatic data in an excel with in row the different coordinates (as much as the number of populations/different coordinates per populations) and with in columns the ID, coordinates and the environmental variables
+  -   a dataframe with the information about the ID, populations of the individuals in columns and in row the individuals
+  -   ...
+
+```{r data, include=FALSE}
+data=read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/population/Ppinea_data_filtre.csv",sep=";",dec=",")
+pop=read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/population/localisation_ppinea.csv",sep=";",dec=",")
+#elevation=read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_Pinea/elevation.csv",sep=";",dec=",")
+climatic_data_present<-read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/population/climatic_data_Ppinea.csv",h=T,sep=";",dec=",")
+climatic_data_future<-read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/population/climatic_data_Ppinea.csv",h=T,sep=";",dec=",")
+
+
+
+extraction =read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/population/extraction_bis.csv",h=T,sep=";",dec=",")
+
+new <- merge(extraction,data[,c(11,13,14)],by=c("Longitude","Latitude")) 
+  result <- new %>% 
+  distinct(Groups, .keep_all = TRUE)
+  
+
+```
+
+**2.  Clean the data from NA and clones/families**
+
+For this part, we want to discard all the individuals with no coordinates, that are clones or related (families).
+*Somethings that we might want to do is to keep 1 clone per groups of clone of the same populatin because we have the coordinates*
+
+```{r include=FALSE}
+
+data_wo_Na <- data %>%
+  drop_na("Latitude","Longitude") %>% #remove all the rows without coordinates, #here basically, by doing this we also discarded the families because all the related individuals didn't have coordinates
+  filter(is.na(Clone)) %>% #remove the Clones by keeping only the Na row for clones
+  filter(is.na(Family)) %>% #remove the families by keeping only the Na row for families
+  filter(is.na(error))
+  
+
+
+ 
+#-> run this part only if clones or somethings similar that you want to discard
+
+
+##to count the number of trees per provenance trials for each population
+data_x <- data %>% 
+  group_by(Municipality) %>% 
+  count(Clone)
+
+```
+
+
+
+**3.  Sample design with populations**
+
+-   We used the information of the populations to create a map.
+
+```{r create populations, include=FALSE}
+data_pop <- data_wo_Na %>%
+  mutate(Location = paste(Latitude, Longitude,sep=",")) %>%  #this code creates a new column: location that is the merge of the coordinates with a "," between them,#-> this new columns will be used to merge the table without the clones and Na and the table with information about the populations
+  merge(pop,by="Location") #merge pop dans data_wo_Na to obtain the population of each individual
+data_pop$Groups=as.factor(data_pop$Groups)#so ggplot consider groups as a factor and not a density
+
+
+```
+
+
+```{r remove useless data from the R environment 1, include=FALSE}
+#remove useless data from R environment
+
+remove(data,pop,data_wo_Na)
+
+```
+
+```{r map of points, echo=FALSE}
+
+map <- function(data,Populations,Xmin,Xmax,Ymin,Ymax){
+  admin <- ne_countries(scale = "medium", returnclass = "sf")#obtain the blank map of the region
+map_pop <- ggplot() + 
+  geom_sf(data = admin, fill = gray(0.92), size = 0) +#plot the blank map
+  geom_point(data = data, aes(x = Longitude, y = Latitude,color=Populations), shape = 16, size = 3) +#add the sampled points
+  coord_sf(xlim = c(Xmin, Xmax), ylim = c(Ymin, Ymax), expand = FALSE)+#delimit the range of the map
+  theme_classic()
+
+return(map_pop)
+  
+} ##this function creates a map of the sampled points with a specific color for each population
+map(data_pop,data_pop$Groups,-9,36,33,44)
+
+
+
+```
+
+
+One thing that we could improve here is the population's denomination. Indeed, the population's denomination includes a separation within population depending on the coordinates of the points because for downstream analysis I will need to be able to differentiate within the population level, the individuals with different coordinates (to extract their specific climatic data).
+So here, even if the points are assign to the same population, the color will be different if they have different coordinates (ex: 12.1 and 12.2...).
+We might want to have one color per populations in the map and after for later analysis decompose within the populations individuals with different coordinates
+
+-   Something that we might want to do is to add the region information (like France, Spain ...) and switch populations to regions in the map.
+
+**4.  Climatic data**
+
+-   Mean the different years
+
+Here, we wanted to mean per unique coordinates of populations (because for some pop we have multiple coordinates ex: 12.1,12.2) the different years of environmental data per environmental variables to have a mean for a specific period (ex: 1900-1990).
+Indeed, here we choose the period that seems to be the period where the trees were developing in the area.
+So, we want here the climatic conditions that could induce selective pressure and then selection of the trees with the best phenotype and so genotype for these pressure.
+We created 2 codes: 
+  - a manual way of doing it (not show/run here)
+
+#```{r manual way of doing the things: climatic_data present, eval=FALSE, include=FALSE}
+
+#select only june and september for precip and august for tmax
+ climatic_data_filtered <- climatic_data_present %>%
+  select(-c(tmx01, tmx02, tmx03, tmx04, tmx05, tmx06, tmx07, tmx09, tmx10, tmx11, tmx12,
+            prc01, prc02, prc03, prc04, prc05, prc07, prc08, prc10, prc11, prc12)) %>%
+  mutate(across(6:20, as.numeric))#transform each climatic variable into numeric variables
+ 
+#mean years per pop (ID)
+ climatic_data_filtered_mean <- climatic_data_filtered %>% 
+   group_by(ID) %>% 
+  summarize(across(5:19, ~ mean(.))) #select 5 to 19 and not 6 to 20 because by computing group_by, the column ID is not taking into account anymore
+
+ ##test the results for 1 pop
+specific_id_data <- climatic_data_filtered %>%
+  filter(ID == 1) %>%
+  select(6:20)
+specific_id_mean <- colMeans(specific_id_data, na.rm = TRUE)
+
+#add the longitude and latitude variables
+ climatic_data_present <- data.frame(climatic_data_filtered[,c(1:3)],climatic_data_filtered_mean[,-1]) #-1 because ID is already in climatic_data_filtered
+  
+#```
+
+  - a function name *filtration_climatic_data* that is doing it automatically
+We also include a way of testing the results.
+We then used the function for past/present environmental data and future ones.
+
+
+
+```{r climatic_data present, include=FALSE}
+
+#Function do to it
+
+##function to select climatic data of interest and do the mean of each year of data for each climatic variables and that's for each ID (pop) 
+filtration_climatic_data <- function(revelant_variables,from,to,Groups){
+  #create a table with only the climatic variables of interest
+  climatic_data_filtered <- data.frame(revelant_variables) %>% 
+    mutate(across(from_variable:to_variable, as.numeric))#pass the variables in numeric
+#do the mean of each year of data for each climatic variables and that's for each ID (pop)
+  climatic_data_filtered_mean <- climatic_data_filtered %>% 
+   group_by(Groups) %>% 
+  summarize(across((from_variable-1):(to_variable-1), ~ mean(.)))
+  #we need to extract the ID, longi and lati from the dataframe with all the rows
+  climatic_data_filtered_81 <- climatic_data_filtered %>% 
+    group_by(Groups) %>% #groups the row by ID
+    slice_head(n = 1) %>% #keep only the first row of each groups
+    select(c(1:3))#select only the 3 first columns
+  #add the longitude and latitude variables
+   climatic_data_present <- data.frame(climatic_data_filtered_81[,c(1:3)],climatic_data_filtered_mean[,-1]) #-1 because ID is already in
+
+}
+##save the function to a future script
+saveRDS(filtration_climatic_data,file="filtration_climatic_data.rds")
+
+#read the function store in directory
+filtration_climatic_data <- readRDS("filtration_climatic_data.rds")
+
+#initial parameters
+revelant_variables <- climatic_data_present[,-c(6:12,14:22,24,25,27:29)]
+from_variable <- 6
+to_variable <- 20
+Groups <- climatic_data_present$Groups
+
+
+##result
+data_present_1step <- filtration_climatic_data(revelant_variables,from,to,ID) 
+
+#test the results for 1 pop
+climatic_data_filtered_present <- data.frame(revelant_variables) %>% 
+    mutate(across(from_variable:to_variable, as.numeric))
+specific_id_data <- climatic_data_filtered_present %>%
+  filter(Groups == 12) %>%
+  select(from_variable:to_variable)
+specific_id_mean <- colMeans(specific_id_data, na.rm = TRUE)
+
+#We can visualize if the test give the same result than the function
+
+```
+
+
+```{r remove useless data from the R environment 2, include=FALSE}
+#remove useless data from R environment
+
+remove(revelant_variables,from_variable,to_variable,ID,specific_id_data,specific_id_mean,climatic_data_present,climatic_data_filtered_present)
+
+```
+
+
+
+```{r climatic_data future, include=FALSE}
+
+
+##function to select climatic data of interest and do the mean of each year of data for each climatic variables and that's for each ID (pop) 
+
+##filtration_climatic_data()
+
+#initial parameters
+revelant_variables <- climatic_data_future [,-c(6:12,14:22,24,25,27:29)]
+from_variable <- 6
+to_variable <- 20
+ID <- climatic_data_future$ID
+
+
+##result
+data_future_1step <- filtration_climatic_data(revelant_variables,from,to,ID)
+
+#test the results for 1 pop
+climatic_data_filtered_future <- data.frame(revelant_variables) %>% 
+    mutate(across(from_variable:to_variable, as.numeric))
+specific_id_data <- climatic_data_filtered_future %>%
+  filter(Groups == 1) %>%
+  select(from_variable:to_variable)
+specific_id_mean <- colMeans(specific_id_data, na.rm = TRUE)
+
+```
+
+```{r remove useless data from the R environment 3, include=FALSE}
+#remove useless data from R environment
+
+remove(revelant_variables,from_variable,to_variable,ID,specific_id_data,specific_id_mean,climatic_data_future,climatic_data_filtered_future)
+
+```
+
+Something that we also want to do is to compare the climatic values between 1901/1950 and 1950/1990 to see if there is any differences between the two periods. Indeed, differences could be attributed to the climatic evolution or due to error most important to estimate the climatic values the more we go in the past. 
+
+```{r correlation between climatic values from the 2 periods}
+
+
+```
+
+
+**5.  Selecting the environmental/climatic variables**
+
+We used 3 methods to select the climatic variables for the GEA: 
+  - Biological relevance 
+  - Change of values in the future 
+  - avoid collinearity between variables
+
+  i. Biological relevance
+
+The first steep was to go through the literature and find the most relevant climatic variables for the species of interest Every SDM, GEA or simply the biological description of the species were used to assess the relevant climatic data.
+For example, the relevant climatic data for *Pinus pinea* seem to be: **Bio1,5,6,7,10,12,16,17,19,EMT,SHM,MSP,precip june and september and max temperature august**
+
+  ii. Change of values in the future
+
+
+The second step to select the climatic variables was to test if the values of the climatic data will change in the future.
+Indeed, if the values won't change, it's not useful to take them into account because it will not affects the populations into the future.
+We could also think that if the climatic values for a specific climatic variables is quit homogeneous along the area of the species, it's not relevant because we might not expect difference in adaptation for this specific variable among populations.
+
+To test if the values will change, we created a function: *relative_difference_climate* that is creating a new table with the difference between future and present for each specific coordinates populations for each climatic variables.
+Testing if the values of variables will change into the future.
+For example: (tmx08 future - tmx08 present)/tmx08prese
+
+```{r change in values of variable between present and future, include=FALSE}
+
+# Calculate the difference for each climatic variable
+relative_difference_climate <- function(data_present, data_future, from,to,Groups) {
+  climatic_columns <- names(data_present)[from:to]#select the climatic variables
+  
+  relative_data_difference <- (data_future[, climatic_columns] - data_present[, climatic_columns])/data_present[,climatic_columns] #calculate the difference between future values and current one for each climatic variables
+  colnames(relative_data_difference) <- paste0(colnames(relative_data_difference),"_relative_difference") #add difference in the name of the columns
+  
+  ID_long_lat <- data_present %>% 
+    group_by(Groups) %>% #groups the row by ID
+    slice_head(n = 1) %>% #keep only the first row of each groups
+    select(c(1:3))#select only the 3 first columns
+  
+  #add the ID, longitude and latitude variables
+   data_difference_final <- data.frame(ID_long_lat[,c(1:3)],relative_data_difference) #-1 because ID is already in
+   
+  return(data_difference_final)
+} 
+
+data_present <- data_present_1step#data with the current/past climatic conditions
+data_future <- data_future_1step #data with the future climatic conditions
+from <- 4 #first columns of climatic data
+to <- 18 #last columns of climatic data
+Groups <- data_present_1step$Groups #pop groups
+
+relative_data_difference<- relative_difference_climate(data_present,data_future,from,to)
+
+```
+
+
+```{r remove useless data from the R environment 4, include=FALSE}
+#remove useless data from R environment
+
+remove(data_present,data_future,from,to,ID)
+
+```
+
+
+We can visualize the results using the Violin graph.
+To obtain the violin graph I used a manual code (not run nor show) and then created a function name *violin_plot*.
+This graph enables to visualize for each climatic variable the range of difference for each regions.
+If a climatic variable has low change (the distance is near 0), the variables is not changing a lot in the future so we could discard it.
+
+#```{r correlation between variables, eval=FALSE, include=FALSE}
+revelant_variables_violin <- relative_data_difference [,c(1,4:18)]
+data_violin <- gather(revelant_variables_violin,key="revelant_variables",value="Value",-ID)
+data_violin <- data_violin[-c(1:162),]
+
+head_5 <-data_violin[c(1:100),]
+groups=sample(1:5,100,replace=T)
+Values=sample(1:5,100,replace=T)
+head_6 <-data.frame(head_5[,c(1,2)],Values,groups)
+
+ggplot(head_6, aes(x = revelant_variables_violin, y = Values, fill = as.factor(groups))) +
+  geom_violin(scale = "width", trim = FALSE) +
+  geom_boxplot(width = 0.2, color = "black", alpha = 0) +
+  scale_fill_brewer(palette = "Set3") +
+  theme_minimal() +
+  labs(title = "Violin Plot of Climatic Factors by Population",
+       x = "Climatic Factor",
+       y = "Value")
+
+head_6$groups=as.factor(head_6$groups)
+
+
+  
+ggplot(head_6, aes(x = revelant_variables_violin, y = Values)) +
+  geom_violin(trim = FALSE) +
+  geom_point(aes(color = groups), shape = 16, position = position_jitter(seed = 1, width = 0.2)) +
+  labs(colour="region",x="climatic variables",y="Difference between future and past climate",title="Violin Plot of Climatic Factors by Population")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+#```
+
+```{r graphic representation climatic difference between future and past, eval=FALSE, include=FALSE}
+
+violin_plot <- function(revelant_variables_graph,ID,regions){#may be interesting to do it by regions and not populations to better vizualise
+data_violin <- gather(revelant_variables_graph,key="revelant_variables",value="Value",-Groups,-regions)#create a dataframe for the violin graph with all the values of climatic variables in 1 columns: Value and all the different coordinates for populations for the different variables in row.
+data_violin$regions=as.factor(data_violin$regions)
+
+p <- ggplot(data_violin, aes(x = revelant_variables_graph, y = Value)) +
+  geom_violin(trim = FALSE) +
+  geom_point(aes(color = regions), shape = 16, position = position_jitter(seed = 1, width = 0.2)) +
+  labs(colour="Regions",x="climatic variables",y="Difference between future and past climate",title="Violin Plot of Climatic Factors by Regions")+
+  theme(plot.title = element_text(hjust = 0.5))
+return(p)
+}
+
+
+revelant_variables_graph <- relative_data_difference[,c(1,2,4:18)]#selection of ID, populations and the climatic variables
+Groups <- revelant_variables_graph$Groups
+regions <-
+  
+data_violin(revelant_variables_graph,ID,regions)
+
+#finaly we select only certain data by doing: 
+#present
+data_present_2step <- subset(data_present_1step,select= -c(...))
+  
+#future
+data_future_2step <- subset(data_future_1step,select= -c(...))
+```
+
+
+```{r remove useless data from the R environment 4, include=FALSE}
+#remove useless data from R environment
+
+remove(data_future_1step,data_present_1step,regions,ID,revelant_variables_graph)
+
+```
+
+
+  iii. Correlation between variables
+
+The last step to select the variables is to avoid over collinearity between variables.
+To do so, we decided to keep only the variables not too correlated (<absolute corr of 0.7?) from the **data_2step** data set were we already discarded the non changing variables into the future.
+```{r testing the correlation between variables, echo=FALSE, message=FALSE, warning=FALSE}
+
+
+#function to do it
+#matrix of correlation
+correlation_function <-function(data,threshold){
+    data_correlation <- subset(data,select= -c(Groups,Longitude,Latitude)) 
+      rownames(data_correlation) <- data$ID
+      correlation <- cor(data_correlation)
+  correlation[abs(correlation) <= threshold] <- 0
+corr_plot <- corrplot(correlation, method = "number", addrect = 2, col = c("red", "white", "red"), type = "lower", tl.col = "black", tl.cex = 0.6, number.cex = 0.6)
+}
+
+
+
+#correlation past/present
+data_present <- data_present_2step #we use the dataset without the variables we discarded previously
+threshold <- 0.7
+correlation_past <-correlation_function(data_present,threshold)
+
+
+#correlation future
+data_future <- data_future_2step
+threshold <- 0.7
+correlation_fut <-correlation_function(data_future,threshold)
+
+
+
+```
+
+
+**6. Normalize the data**
+
+The last step for the environmental data is to normalize them to use them in the downstream analysis
+
+```{r normalize the data, echo=FALSE, message=FALSE, warning=FALSE}
+#creation of the scaled matrix
+
+
+#initial parameters
+data <- data_present_1step[,4:18]
+ID <- data_present_1step[,1:3]
+scale_f(data,ID)
+
+##scale the selected variables then add ID and reorganize the columns order
+  data_scale <- scale(data) %>% #scale
+    data.frame(ID) %>% #add ID
+    select(16,17,18,1:15)#reorganize the column order
+  
+  #we kept the values of scaling and centering for each variables to normalize the future values by the same values
+  scale_env_value <- attr(data_scale, 'scaled:scale')
+center_env_value <- attr(data_scale, 'scaled:center')
+
+#Save the matrix and the normalized values
+
+write_xlsx(data_scale,"C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/normalized_climatic_data.xlsx")
+write_xlsx(scale_env_value,"C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/scale_env_value.xlsx")
+write_xlsx(center_env_value,"C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/center_env_value.xlsx")
+
+```
+
