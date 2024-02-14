@@ -47,6 +47,8 @@ data=read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/po
 pop=read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/population/localisation_ppinea.csv",sep=";",dec=",")
 #elevation=read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_Pinea/elevation.csv",sep=";",dec=",")
 climatic_data_present<-read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/population/climatic_data_Ppinea.csv",h=T,sep=";",dec=",")
+
+#for climatic data
 climatic_data_future<-read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/population/climatic_data_Ppinea.csv",h=T,sep=";",dec=",")
 
 
