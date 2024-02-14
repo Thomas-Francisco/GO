@@ -1,0 +1,289 @@
+---
+title: "script_extracting_climatic_data"
+author: "Thomas Francisco"
+date: "2024-02-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = FALSE)
+
+
+```
+
+
+This script is a pipeline to process the climatic/environmental data from the row output of *ClimateDT* (or any program that would give data in an excel with all the years of climatic data) to a dataframe with center and reduce the choosen variables for past/present and future climatic data.
+This script is separated in different steps:
+- Pre-selection of climatic variables 
+- Loading of past and future data and processing :mean values per period, check values between period and check correlation between values from point to values from raster
+- Selection of climatic variables: calculation of distance between past and future values, imprecision along studied area, multicollinearity
+- Comparison of the past retained climatic values between populations (see if adaptive gradient could emerge from )
+- Comparison of the values of the different climatic models for the future between populations 
+- Standardization of the retained climatic values
+
+
+    **1. Pre-selection of climatic variables**
+The first step consist of go through the literature of the targeted species and define a set of climatic variables potentially drivers (inducing selective pressure) of adaptive genetic variation across the species range.  
+The goal is to retain biological informative climatic variables only. This enable to reduce the set of tested climatic variables and also enable to work on the hypothesis before starting the analysis.
+The goal is not to retain only 2 or 3 variables but also not to retain 40 of them. This pre-selection could retain 10-15 variables depending on the species and the richness of the literature related to it.
+
+
+    **2. Loading climatic data and processing them**
+Climatic data come from **ClimateDT** in two different types: layer of points and raster.
+We extracted the data from the past and from the future. One major differences between past and future data results in the shape of the data: 
+  - Past data are available in 1 value per year for each variables (for each populations/pixel selected). As a example, for the period 1901-1950, we have 50 values for each variables for each populations
+  - Future data are not so accurate, we only have the mean of the values for the selected period. As a example, for the period 2041-2070, we have 1 value for each variables for each populations.
+  
+One of the issues is that all the bioclimatic variables (bio) or other related climatic variables are build using monthly values of tmin, tmax and precipitation. We cannot just perform the mean of the 50 values of bio 1 from 1901 to 1950 to obtain the mean value of bio 1 for this period. We need to mean the tmin, tmax and precipitation for each month to have 1 value of tmin for January for the period 1901-1950, 1 value of tmin for February for the period 1901-1950 ... 
+Then, we can use the **biovars** function from the **Dismo** R package to calculate the 19 bioclim variables for the period of interest (e.g 1901-1950).
+To calculate the other climatic variables such as AHM for the same specific period, we can follow the procedure of ClimateDT by using the new Bio1,Bio10 and Bio12... obtained from biovars.
+For other variables not directly linked to tmin, tmax, precipitation or bioclim variables such as GDD5, the average value for a specific period is not straightforward to get, data are coming from Maurizio Marchi (IBBR-CNR).
+
+
+      - Average values for the specific periods
+First of all, we load the tmin, tmax and preci data for the 2 periods: 1901-1950 and 1951-1990.
+Are we loading layer point dataset and raster?
+
+```{r loading climatic data}
+
+
+```
+
+Then, we do the average of the monthly values of tmin, tmax and precip independantly for the 2 periods
+
+```{r monthly_mean_values of past climatic data}
+
+```
+
+
+We performed the **biovars** function to get the 19 bioclim variables and we kept only the one we pre-selected.
+
+```{r biovars function}
+```
+
+We also calculated the other climatic variables of interest and load the one that Maurizio calculated for us. 
+
+```{r calculation of the other climatic variables and load of the ones from Maurizio}
+
+```
+
+
+
+      - Selection of the past period
+We want that the past climatic climat caracterise the time of establishement of the trees and then caracterize the selective(s) pressure(s) that selected the trees with the best phenotype and so genotype for these pressure. By doing that, the GEA relationship will assume to be able to capture the correlation between the climate and the genetic variation to try to find adaptive loci or near adaptive regions. 
+As lifespawn of trees is important, we assumes that the time of establishement of the trees in the populations happenned before the global warming. We selected 2 periods that could be of interest: 
+    - 1901-1950: We can argue that the global warming had not impact the climate of this period, but because we went back more in the past, the accuracy of the data is reduce.
+    - 1951-1990: the accuracy of these data is greater because we have more climatic station that measure this climate but we can also expect that global warming could already be visible during this period.
+
+We want to study the correlatio between these two period to see if we could detect trends of climate change in the 1951-1990 period compared to 1901-1950 through for example warming or reduction of precipitation in some areas. If not, we could then use this period as past data for GEA.
+
+```{r comparison between the two past period}
+
+```
+
+Interpretation: ...
+Answer: We selected the period ... as past period for downstream analysis.
+
+
+One of the other main issues is that we have 2 types of data with different accuracy: 
+    - Layer points data: they have greater resolution but not too convenient for large dataset (mostly for populations, common garden...)
+    - Raster data: lower resolution but covenient for large data set (interpolation across the studied area)
+  
+During the study, we would calculate indexes with values from layer points and raster. We want to test if the values are similar and can be interchangeably applied. 
+To do so, we calculated the difference between the values from layer of points and raster for the same populations/pixel.
+
+```{r comparision between layer points and raster}
+
+```
+
+Interpretation: 
+Answer: 
+
+
+    **3. Selection of climatic variables**
+    
+Selection of climatic variables will be in 2/3 steps: 
+
+      i. Difference between past and future values
+We look at the difference between past and future values to see if changes will happen in the future for the climatic variables. 
+Indeed, if the values won't change, it's not useful to take them into account because it will not affects the populations into the future.
+(We could also think that if the climatic values for a specific climatic variables is quit homogeneous along the area of the species, it's not relevant because we might not expect difference in adaptation for this specific variable among populations.)
+
+To investigate whether the values will change, we created a function: *relative_difference_climate* that is creating a new table with the difference between future and present for each specific coordinates populations for each climatic variables(e.g: (tmx08 future - tmx08 present)/tmx08present)
+
+```{r change in values of variable between present and future, eval=FALSE, include=FALSE}
+
+# Calculate the difference for each climatic variable
+relative_difference_climate <- function(data_present, data_future, from,to,Groups) {
+  climatic_columns <- names(data_present)[from:to]#select the climatic variables
+  
+  relative_data_difference <- (data_future[, climatic_columns] - data_present[, climatic_columns])/data_present[,climatic_columns] #calculate the difference between future values and current one for each climatic variables
+  colnames(relative_data_difference) <- paste0(colnames(relative_data_difference),"_relative_difference") #add difference in the name of the columns
+  
+  ID_long_lat <- data_present %>% 
+    group_by(Groups) %>% #groups the row by ID
+    slice_head(n = 1) %>% #keep only the first row of each groups
+    select(c(1:3))#select only the 3 first columns
+  
+  #add the ID, longitude and latitude variables
+   data_difference_final <- data.frame(ID_long_lat[,c(1:3)],relative_data_difference) #-1 because ID is already in
+   
+  return(data_difference_final)
+} 
+
+data_present <- data_present_1step#data with the current/past climatic conditions
+data_future <- data_future_1step #data with the future climatic conditions
+from <- 4 #first columns of climatic data
+to <- 18 #last columns of climatic data
+Groups <- data_present_1step$Groups #pop groups
+
+relative_data_difference<- relative_difference_climate(data_present,data_future,from,to)
+
+```
+
+We compare the difference using Violin graphs.
+To obtain the violin graph I used a manual code (not run nor show) and then created a function name *violin_plot*.
+This graph enables to visualize for each climatic variable the range of difference for each regions.
+If a climatic variable has low change (the distance is near 0), the variables is not changing a lot in the future so we could discard it.
+
+```{r graphic representation climatic difference between future and past, eval=FALSE, include=FALSE}
+
+violin_plot <- function(revelant_variables_graph,ID,regions){#may be interesting to do it by regions and not populations to better vizualise
+data_violin <- gather(revelant_variables_graph,key="revelant_variables",value="Value",-Groups,-regions)#create a dataframe for the violin graph with all the values of climatic variables in 1 columns: Value and all the different coordinates for populations for the different variables in row.
+data_violin$regions=as.factor(data_violin$regions)
+
+p <- ggplot(data_violin, aes(x = revelant_variables_graph, y = Value)) +
+  geom_violin(trim = FALSE) +
+  geom_point(aes(color = regions), shape = 16, position = position_jitter(seed = 1, width = 0.2)) +
+  labs(colour="Regions",x="climatic variables",y="Difference between future and past climate",title="Violin Plot of Climatic Factors by Regions")+
+  theme(plot.title = element_text(hjust = 0.5))
+return(p)
+}
+
+
+revelant_variables_graph <- relative_data_difference[,c(1,2,4:18)]#selection of ID, populations and the climatic variables
+Groups <- revelant_variables_graph$Groups
+regions <-
+  
+data_violin(revelant_variables_graph,ID,regions)
+
+#finaly we select only certain data by doing: 
+#present
+data_present_2step <- subset(data_present_1step,select= -c(...))
+  
+#future
+data_future_2step <- subset(data_future_1step,select= -c(...))
+```
+Interpretation:...
+Conclusion: ...
+
+
+      ii. Imprecision along studied area
+Accuracy of the climatic variables is not homogeneous along the studied area and also along the climatic variables.
+If layers of uncertanty are available, we could check if some variables have a high inaccuracy along the studied area and then discard them. 
+
+```{r Imprecision along the studied area}
+
+```
+Interpretation:
+Conclusion:
+
+      iii. Multicollinerity between variables
+The last step to select the variables is to avoid over collinearity between variables.
+To do so, we decided to keep only the variables not too correlated (<absolute corr of 0.7?) from the remaining variables after step 1.
+
+```{r multicollinearity between variables, eval=FALSE, include=FALSE}
+#function to do it
+#matrix of correlation
+correlation_function <-function(data,threshold){
+    data_correlation <- subset(data,select= -c(Groups,Longitude,Latitude)) 
+      rownames(data_correlation) <- data$ID
+      correlation <- cor(data_correlation)
+  correlation[abs(correlation) <= threshold] <- 0
+corr_plot <- corrplot(correlation, method = "number", addrect = 2, col = c("red", "white", "red"), type = "lower", tl.col = "black", tl.cex = 0.6, number.cex = 0.6)
+}
+
+
+
+#correlation past/present
+data_present <- data_present_2step #we use the dataset without the variables we discarded previously
+threshold <- 0.7
+correlation_past <-correlation_function(data_present,threshold)
+
+
+#correlation future
+data_future <- data_future_2step
+threshold <- 0.7
+correlation_fut <-correlation_function(data_future,threshold)
+
+```
+Interpretation:
+Conclusion:
+
+      iiii. VIF
+Finally, we tested for the variant inflation factor (VIF) using **...** function to confirm that there is no over collinearity between remaining variables.
+
+```{r VIF}
+
+```
+Interpretation: ...
+Conclusion: ...
+
+
+    **4. Comparison of the retained climatic values between populations**
+
+Knowing the climatic range of the sampled populations is important to **have an idea about the selective pressure** that could arise between populations. Also, knowing the repartition of the different regions along the climatic niche is informative regarding the pattern of GEA identified. 
+We performed analysis to visualise the climatic niche (distribution of values (not taking into acount the populations level but species level) for each climatic variables) and also the violin plot with point represent populations, color represent region to visualize the repartition of populations across range of climatic values for each variable
+```{r comparison of past climatic values between populations}
+
+```
+Interpretations: 
+
+We also did it for the future:
+```{r comparison of future climatic values between populations}
+
+```
+Interpretations: 
+
+    **5. Comparison of the past retained climatic values between populations**
+    
+Multiple climatic models that predict the future climate are available. Choosing one of them could be a challenge because sometimes the difference in prediction are important. To avoid bias by selecting only one climatic model that could be an extrem, we selected 3 or 5 of them for the future data. 
+We want to compare them to see if there is a lot a differences in predictions between models. 
+To do so, we performed a ... see paper of benjamin or felix showing that
+```{r Comparison of the climatic models prediction}
+
+```
+
+    **6. Standardization of the retained climatic values**
+
+The final step is to create a data frame with the retained climatic variables standardized for further analysis. 
+We standardized the past and future data with the same values to enable comparison of index between past and future based on the climatic data (e.g Adaptive index, genomic offset...)
+
+```{r normalize the data, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+#creation of the scaled matrix
+
+
+#initial parameters
+data <- data_present_1step[,4:18]
+ID <- data_present_1step[,1:3]
+scale_f(data,ID)
+
+##scale the selected variables then add ID and reorganize the columns order
+  data_scale <- scale(data) %>% #scale
+    data.frame(ID) %>% #add ID
+    select(16,17,18,1:15)#reorganize the column order
+  
+  #we kept the values of scaling and centering for each variables to normalize the future values by the same values
+  scale_env_value <- attr(data_scale, 'scaled:scale')
+center_env_value <- attr(data_scale, 'scaled:center')
+
+#Save the matrix and the normalized values
+
+write_xlsx(data_scale,"C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/normalized_climatic_data.xlsx")
+write_xlsx(scale_env_value,"C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/scale_env_value.xlsx")
+write_xlsx(center_env_value,"C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Pinus_pinea/center_env_value.xlsx")
+
+```
+
+
+
