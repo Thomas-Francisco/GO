@@ -7,8 +7,9 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(cache = FALSE)
-
-
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
 ```
 
 
@@ -45,29 +46,128 @@ First of all, we load the tmin, tmax and preci data for the 2 periods: 1901-1950
 Are we loading layer point dataset and raster?
 
 ```{r loading climatic data}
+Pre_past_climatic_data_point <- read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Taxus_baccata/Climatic_data/Test_script/pre_climatic_data.csv",h=T,sep=";",dec=",")
 
+#Pre_past_climatic_data_raster <-
+
+```
+
+We need to split the dataframe to have 1 per period
+```{r split the pre dataframe based on the period}
+Pre_past_data_1901_1950 <- Pre_past_climatic_data_point[Pre_past_climatic_data_point$Year < 1951,]
+Pre_past_data_1951_1990 <- Pre_past_climatic_data_point[Pre_past_climatic_data_point$Year >= 1951,]
 
 ```
 
 Then, we do the average of the monthly values of tmin, tmax and precip independantly for the 2 periods
 
 ```{r monthly_mean_values of past climatic data}
+#function
+mean_pre_climatic_data <- function(data_frame,from_variable,to_variable,ID){
+  #create a table with only the climatic variables of interest
+  climatic_data_filtered <- data.frame(data_frame) %>% 
+    mutate(across(from_variable:to_variable, as.numeric))#pass the variables in numeric
+#do the mean of each year of data for each climatic variables and that's for each ID (pop)
+  climatic_data_filtered_mean <- climatic_data_filtered %>% 
+   group_by(ID) %>% 
+  summarize(across((from_variable-1):(to_variable-1), ~ mean(.))) ##-1 because, ID is no longer a columns but a columnnames so it does not count it as a column
+  #we need to extract the ID, longi and lati from the dataframe with all the rows
+  climatic_data_mean <- climatic_data_filtered %>% 
+    group_by(ID) %>% #groups the row by ID
+    slice_head(n = 1) %>% #keep only the first row of each groups
+    dplyr::select(c(1:3))#select only the 3 first columns
+  #add the longitude and latitude variables
+   Mean_pre_variables <- data.frame(climatic_data_mean[,c(1:3)],climatic_data_filtered_mean[,-1]) #-1 because ID is already in
+
+}
+
+##result
+Pre_data_mean_period_1901_1950 <- mean_pre_climatic_data(Pre_past_data_1901_1950,6,41,Pre_past_data_1901_1950$ID) 
+Pre_data_mean_period_1951_1990 <- mean_pre_climatic_data(Pre_past_data_1951_1990,6,41) 
+```
+
+
+We can check if the mean_pre_climatic_data function worked correctly
+```{r check if the mean_pre_climatic_data function worked}
+## check if the mean_pre_climatic_data function worked
+data=Pre_past_data_1901_1950
+from=6
+to=41
+
+climatic_data_filtered_present <- data.frame(data) %>% 
+    mutate(across(from:to, as.numeric))
+specific_id_data <- climatic_data_filtered_present %>%
+  filter(ID == "Visegrad") %>% 
+  dplyr::select(from:to)
+specific_id_mean <- colMeans(specific_id_data, na.rm = TRUE)
 
 ```
 
 
 We performed the **biovars** function to get the 19 bioclim variables and we kept only the one we pre-selected.
-
+For this example, we will keep bio1 to 5 and, bio10 to 15 and AHM.
+To get the bio we will use the biovars function: 
 ```{r biovars function}
+
+library(dismo)
+#inital parameters
+##period 1901_1950
+prec_1901_1950 <- data.frame(t(Pre_data_mean_period_1901_1950 %>% dplyr::select(starts_with("prc"))))
+tmn_1901_1950 <- data.frame(t(Pre_data_mean_period_1901_1950 %>% dplyr::select(starts_with("tmn"))))
+tmx_1901_1950 <- data.frame(t(Pre_data_mean_period_1901_1950 %>% dplyr::select(starts_with("tmx"))))
+
+##period 1951_1990
+prec_1951_1990 <- data.frame(t(Pre_data_mean_period_1951_1990 %>% dplyr::select(starts_with("prc"))))
+tmn_1951_1990 <- data.frame(t(Pre_data_mean_period_1951_1990 %>% dplyr::select(starts_with("tmn"))))
+tmx_1951_1990 <- data.frame(t(Pre_data_mean_period_1951_1990 %>% dplyr::select(starts_with("tmx"))))
+
+
+#function
+Bio1_19_all_pop_1901_1950 <- data.frame(biovars(prec_1901_1950,tmn_1901_1950,tmx_1901_1950))
+Bio1_19_all_pop_1951_1990 <- data.frame(biovars(prec_1951_1990,tmn_1951_1990,tmx_1951_1990))
+
+```
+
+Here, we also checked if the biovars function worked properly
+```{r check if biovars worked properly}
+#check by calculating manually bio1
+data <- Pre_data_mean_period_1901_1950
+
+#calculation of monthly average temperature
+tavg <- (data %>% dplyr::select(contains("tmn")) + data %>% dplyr::select(contains("tmx")))  / 2
+#mean of the monthly average temperature
+BIO1_all_populations <- tavg %>% 
+  mutate_all( function(x) as.numeric(as.character(x))) %>% 
+  apply(MARGIN=1,FUN=mean)
 ```
 
 We also calculated the other climatic variables of interest and load the one that Maurizio calculated for us. 
-
+Here we will only calculate as an example the AHM index: Annual heat moisture index calculated using the formula:                                                    (bio1+10)/(bio12/1000))
 ```{r calculation of the other climatic variables and load of the ones from Maurizio}
+#period 1901_1950
+data_1901_1950 <- Bio1_19_all_pop_1901_1950
+AHM_1901_1950 <- data.frame((data_1901_1950$bio1+10)/(data_1901_1950$bio12/1000)) #the more we are close to 0 the less it's arid, the more we are far from 0 the more it's arid
 
+#period 1951_1990
+data_1951_1990 <- Bio1_19_all_pop_1951_1990
+AHM_1951_1990 <- data.frame((data_1951_1990$bio1+10)/(data_1951_1990$bio12/1000)) #the more we are close to 0 the less it's arid, the more we are far from 0 the more it's arid
+
+#we can add other index based on their relevance for the species 
 ```
 
+Finally, we want to merge all the index that we will keep. We will have 2 dataframes: 1 for each period
 
+```{r climatic past dataset}
+#merge to one climatic dataset all the variables
+##we change the BIO and other index based on the species we're studying
+#here we kept bio 1 to 5, bio 10 to 15 and AHM
+##period 1901_1950
+past_climatic_data_1901_1950 <- data.frame(cbind(Pre_data_mean_period_1901_1950[,c("ID")],Bio1_19_all_pop_1901_1950[,c(1:5,10:15)],AHM_1901_1950));names(past_climatic_data_1901_1950)[names(past_climatic_data_1901_1950)=="Pre_data_mean_period_1901_1950...c..ID..."] <- "Population";names(past_climatic_data_1901_1950)[names(past_climatic_data_1901_1950)=="X.data_1901_1950.bio1...10...data_1901_1950.bio12.1000."] <- "AHM"
+
+##period 1951_1990
+past_climatic_data_1951_1990 <-data.frame(cbind(Pre_data_mean_period_1951_1990[,c("ID")],Bio1_19_all_pop_1951_1990[,c(1:5,10:15)],AHM_1951_1990));names(past_climatic_data_1951_1990)[names(past_climatic_data_1951_1990)=="Pre_data_mean_period_1951_1990...c..ID..."] <- "Population";names(past_climatic_data_1951_1990)[names(past_climatic_data_1951_1990)=="X.data_1951_1990.bio1...10...data_1951_1990.bio12.1000."] <- "AHM"
+
+```
 
       - Selection of the past period
 We want that the past climatic climat caracterise the time of establishement of the trees and then caracterize the selective(s) pressure(s) that selected the trees with the best phenotype and so genotype for these pressure. By doing that, the GEA relationship will assume to be able to capture the correlation between the climate and the genetic variation to try to find adaptive loci or near adaptive regions. 
@@ -75,11 +175,66 @@ As lifespawn of trees is important, we assumes that the time of establishement o
     - 1901-1950: We can argue that the global warming had not impact the climate of this period, but because we went back more in the past, the accuracy of the data is reduce.
     - 1951-1990: the accuracy of these data is greater because we have more climatic station that measure this climate but we can also expect that global warming could already be visible during this period.
 
-We want to study the correlatio between these two period to see if we could detect trends of climate change in the 1951-1990 period compared to 1901-1950 through for example warming or reduction of precipitation in some areas. If not, we could then use this period as past data for GEA.
+We want to study the correlation between these two period to see if we could detect trends of climate change in the 1951-1990 period compared to 1901-1950 through for example warming or reduction of precipitation in some areas. If not, we could then use this period as past data for GEA.
 
 ```{r comparison between the two past period}
+#we want to compare them using the difference between both period using a 1:1 relation
+#first we want to color the points based on their origin: country or area, we will extract this information from another data.frame
+meta_data <- read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Taxus_baccata/Populations/test_script/Population_test_script.csv",h=T,sep=";",dec=",")
+##period 1901_1950
+comp_past_climatic_data_1901_1950 <- merge(meta_data[,c(1:2)],past_climatic_data_1901_1950,"Population")
+colnames(comp_past_climatic_data_1901_1950)[3:14] <- paste0(colnames(comp_past_climatic_data_1901_1950)[3:14], "_1901_1950")
+##period 1951_1990
+comp_past_climatic_data_1951_1990 <- merge(meta_data[,c(1:2)],past_climatic_data_1951_1990,"Population")
+colnames(comp_past_climatic_data_1951_1990)[3:14] <- paste0(colnames(comp_past_climatic_data_1951_1990)[3:14], "_1951_1990")
+
+
+
+data_tot_period <- data.frame(merge(comp_past_climatic_data_1901_1950,comp_past_climatic_data_1951_1990,"Population")[,-15])
+
+x=lm(comp_past_climatic_data_1901_1950[,c(3)]~comp_past_climatic_data_1951_1990[,c(3)])
+plot(comp_past_climatic_data_1901_1950[,c(3)],comp_past_climatic_data_1951_1990[,c(3)])
+
+b <- ggplot(aes(x = comp_past_climatic_data_1901_1950[,c(3)], y = comp_past_climatic_data_1951_1990[,c(3)]))
 
 ```
+
+
+```{r}
+
+main_gp_pop <- comp_past_climatic_data_1901_1950$Country
+xlist=list(colnames(comp_past_climatic_data_1901_1950)[3:14])
+x=data_tot_period$bio1_1901_1950
+y=data_tot_period$bio1_1951_1990
+data=data_tot_period
+
+
+##function
+scatterplot_funct <- function(data,x,y,main_gp_pop){
+ggplot(data,aes(x=x,y=y)) +
+  geom_point(aes(color=main_gp_pop),size=3)+
+  scale_colour_manual(name="Main gene pool",
+                      values = c("orangered3","gold2","darkorchid3","navyblue","turquoise2","green3","blue","red","black","gray","orange")) +
+  geom_abline(intercept = 0, slope = 1, color="gray60") 
+}
+  
+
+lapply(xlist, function(x) scatterplot_funct(data=data_tot_period,x=data_tot_period[,c(3:14)],y=data_tot_period[,c(15:26)],main_gp_pop=data_tot_period$Country.x))
+
+d <- scatterplot_funct(data,x,y,scatterplot_funct)
+s <- scatterplot_funct(data_tot_period,data_tot_period$bio1_1901_1950,data_tot_period$bio1_1951_1990,main_gp_pop)
+```
+```{r for loop for the scatterplot_funct}
+
+
+for(i in 1:data_tot_period[,c(3:26)]{
+  
+}
+    )
+```
+
+
+
 
 Interpretation: ...
 Answer: We selected the period ... as past period for downstream analysis.
@@ -285,5 +440,5 @@ write_xlsx(center_env_value,"C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/
 
 ```
 
-
+ 
 
