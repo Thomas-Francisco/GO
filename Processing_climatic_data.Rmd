@@ -10,11 +10,12 @@ knitr::opts_chunk$set(cache = FALSE)
 library(dplyr)
 library(tidyverse)
 library(ggplot2)
+library(corrplot)
 ```
 
 
-This script is a pipeline to process the climatic/environmental data from the row output of *ClimateDT* (or any program that would give data in an excel with all the years of climatic data) to a dataframe with center and reduce the choosen variables for past/present and future climatic data.
-This script is separated in different steps:
+This script is a pipeline to process the climatic/environmental data from the row output of *ClimateDT* (or any program that would give data in an excel with one row per populatiob/individual per year of climatic data) to a dataframe with center and reduce the choosen variables for past/present and future climatic data.
+This script is separated in multiples steps:
 - Pre-selection of climatic variables 
 - Loading of past and future data and processing :mean values per period, check values between period and check correlation between values from point to values from raster
 - Selection of climatic variables: calculation of distance between past and future values, imprecision along studied area, multicollinearity
@@ -33,9 +34,9 @@ The goal is not to retain only 2 or 3 variables but also not to retain 40 of the
 Climatic data come from **ClimateDT** in two different types: layer of points and raster.
 We extracted the data from the past and from the future. One major differences between past and future data results in the shape of the data: 
   - Past data are available in 1 value per year for each variables (for each populations/pixel selected). As a example, for the period 1901-1950, we have 50 values for each variables for each populations
-  - Future data are not so accurate, we only have the mean of the values for the selected period. As a example, for the period 2041-2070, we have 1 value for each variables for each populations.
+  - Future data are not so accurate, we only have the mean of the values for the selected period. As a example, for the period 2041-2070, we have 1 value for each variables for each populations. -> Not sure about this because I have 1 value per year per pop even for the future data...
   
-One of the issues is that all the bioclimatic variables (bio) or other related climatic variables are build using monthly values of tmin, tmax and precipitation. We cannot just perform the mean of the 50 values of bio 1 from 1901 to 1950 to obtain the mean value of bio 1 for this period. We need to mean the tmin, tmax and precipitation for each month to have 1 value of tmin for January for the period 1901-1950, 1 value of tmin for February for the period 1901-1950 ... 
+One of the issues is that all the bioclimatic variables (bio) or other related climatic variables are build using monthly values of tmin, tmax and precipitation. We cannot just perform the mean of the 50 values of bio 1 from 1901 to 1950 to obtain the mean value of bio 1 for this period. We need to average the tmin, tmax and precipitation for each month to have 1 value of tmin for January for the period 1901-1950, 1 value of tmin for February for the period 1901-1950 ... 
 Then, we can use the **biovars** function from the **Dismo** R package to calculate the 19 bioclim variables for the period of interest (e.g 1901-1950).
 To calculate the other climatic variables such as AHM for the same specific period, we can follow the procedure of ClimateDT by using the new Bio1,Bio10 and Bio12... obtained from biovars.
 For other variables not directly linked to tmin, tmax, precipitation or bioclim variables such as GDD5, the average value for a specific period is not straightforward to get, data are coming from Maurizio Marchi (IBBR-CNR).
@@ -45,10 +46,8 @@ For other variables not directly linked to tmin, tmax, precipitation or bioclim 
 First of all, we load the tmin, tmax and preci data for the 2 periods: 1901-1950 and 1951-1990.
 Are we loading layer point dataset and raster?
 
-```{r loading climatic data}
+```{r loading past climatic data layer points}
 Pre_past_climatic_data_point <- read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Taxus_baccata/Climatic_data/Test_script/pre_climatic_data.csv",h=T,sep=";",dec=",")
-
-#Pre_past_climatic_data_raster <-
 
 ```
 
@@ -121,7 +120,6 @@ prec_1951_1990 <- data.frame(t(Pre_data_mean_period_1951_1990 %>% dplyr::select(
 tmn_1951_1990 <- data.frame(t(Pre_data_mean_period_1951_1990 %>% dplyr::select(starts_with("tmn"))))
 tmx_1951_1990 <- data.frame(t(Pre_data_mean_period_1951_1990 %>% dplyr::select(starts_with("tmx"))))
 
-
 #function
 Bio1_19_all_pop_1901_1950 <- data.frame(biovars(prec_1901_1950,tmn_1901_1950,tmx_1901_1950))
 Bio1_19_all_pop_1951_1990 <- data.frame(biovars(prec_1951_1990,tmn_1951_1990,tmx_1951_1990))
@@ -177,7 +175,7 @@ As lifespawn of trees is important, we assumes that the time of establishement o
 
 We want to study the correlation between these two period to see if we could detect trends of climate change in the 1951-1990 period compared to 1901-1950 through for example warming or reduction of precipitation in some areas. If not, we could then use this period as past data for GEA.
 
-```{r comparison between the two past period}
+```{r comparison between the two past periods}
 #we want to compare them using the difference between both period using a 1:1 relation
 #first we want to color the points based on their origin: country or area, we will extract this information from another data.frame
 meta_data <- read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Taxus_baccata/Populations/test_script/Population_test_script.csv",h=T,sep=";",dec=",")
@@ -189,50 +187,65 @@ comp_past_climatic_data_1951_1990 <- merge(meta_data[,c(1:2)],past_climatic_data
 colnames(comp_past_climatic_data_1951_1990)[3:14] <- paste0(colnames(comp_past_climatic_data_1951_1990)[3:14], "_1951_1990")
 
 
-
-data_tot_period <- data.frame(merge(comp_past_climatic_data_1901_1950,comp_past_climatic_data_1951_1990,"Population")[,-15])
-
-x=lm(comp_past_climatic_data_1901_1950[,c(3)]~comp_past_climatic_data_1951_1990[,c(3)])
-plot(comp_past_climatic_data_1901_1950[,c(3)],comp_past_climatic_data_1951_1990[,c(3)])
-
-b <- ggplot(aes(x = comp_past_climatic_data_1901_1950[,c(3)], y = comp_past_climatic_data_1951_1990[,c(3)]))
+#general data frame with the 2 periods
+data_tot_period <- data.frame(merge(comp_past_climatic_data_1901_1950,comp_past_climatic_data_1951_1990,"Population")) %>% 
+  dplyr::select(-c("Country.y")) 
 
 ```
 
+In order to compare the climatic variables between the two periods, we will perform a scatterplot between the both period for each climatic variables. We will be able to see if the values are consistent across periods and also the differences between and within populations along the climatic variables.
 
-```{r}
-
-main_gp_pop <- comp_past_climatic_data_1901_1950$Country
-xlist=list(colnames(comp_past_climatic_data_1901_1950)[3:14])
-x=data_tot_period$bio1_1901_1950
-y=data_tot_period$bio1_1951_1990
-data=data_tot_period
-
-
+```{r function to compare the two periods}
+#we created a function to perform the scatterplot 
 ##function
-scatterplot_funct <- function(data,x,y,main_gp_pop){
+scatterplot_funct <- function(data,x,y,main_gp_pop,xlab,ylab,title){
 ggplot(data,aes(x=x,y=y)) +
   geom_point(aes(color=main_gp_pop),size=3)+
   scale_colour_manual(name="Main gene pool",
                       values = c("orangered3","gold2","darkorchid3","navyblue","turquoise2","green3","blue","red","black","gray","orange")) +
-  geom_abline(intercept = 0, slope = 1, color="gray60") 
-}
-  
-
-lapply(xlist, function(x) scatterplot_funct(data=data_tot_period,x=data_tot_period[,c(3:14)],y=data_tot_period[,c(15:26)],main_gp_pop=data_tot_period$Country.x))
-
-d <- scatterplot_funct(data,x,y,scatterplot_funct)
-s <- scatterplot_funct(data_tot_period,data_tot_period$bio1_1901_1950,data_tot_period$bio1_1951_1990,main_gp_pop)
-```
-```{r for loop for the scatterplot_funct}
-
-
-for(i in 1:data_tot_period[,c(3:26)]{
+  geom_abline(intercept = 0, slope = 1, color="gray60")+
+    xlab(xlab)+
+    ylab(ylab)+
+    ggtitle(title)+ 
+    theme_set(theme_bw())
   
 }
-    )
+
+#Test of the function for 1 variable
+##initial values
+main_gp_pop <- comp_past_climatic_data_1901_1950$Country #color the points by region or country
+x <- data_tot_period$bio1_1901_1950 
+y <- data_tot_period$bio1_1951_1990
+data <- data_tot_period
+
+##results
+s <- scatterplot_funct(data_tot_period,data_tot_period$bio1_1901_1950,data_tot_period$bio1_1951_1990,main_gp_pop,xlab="Bio1 1901-1950",ylab="Bio1 1951-1990",title="Comparison bio1 between the two periods")
+plot(s)
 ```
 
+The goal is to compare the values of each variables between periods. We created a loop to perform the *scatterplot_funct* function that we just created.
+
+```{r loop for the scatterplot_funct to compare the two periods}
+bioclim_vars <- c("bio1", "bio2", "bio3", "bio4","bio5","bio10","bio11","bio12","bio13","bio14","bio15","AHM")# Add all bioclimatic variable names that we will perform the scatter_plot function
+
+
+# Loop over bioclimatic variables between periods
+for (var in bioclim_vars) {
+  # Extract the data for the bioclimatic variable for the two period
+  data_subset <- data.frame(data_tot_period[, paste0(var, "_1901_1950")], data_tot_period[, paste0(var, "_1951_1990")]) #for each variable in bioclim_vars, we extract the two periods and created a data.frame with only these two variables. 
+  colnames(data_subset) <- c("var1", "var2")
+  
+  # Create scatterplot to compare the bioclimatic variable between the two periods
+  plot <- scatterplot_funct(data_subset, x = data_subset$var1, y = data_subset$var2, main_gp_pop,xlab=paste0(var,"_1901_1950"),ylab=paste0(var,"_1951_1990"),title=paste("Comparison of",var,"between the 2 periods"))
+  # Print the plot
+  print(plot)
+  # Add any additional customization or saving the plot if needed
+ ggsave(file = paste0(var, "_comparison_plot_raster.png"))
+ 
+}
+
+
+```
 
 
 
@@ -247,8 +260,41 @@ One of the other main issues is that we have 2 types of data with different accu
 During the study, we would calculate indexes with values from layer points and raster. We want to test if the values are similar and can be interchangeably applied. 
 To do so, we calculated the difference between the values from layer of points and raster for the same populations/pixel.
 
-```{r comparision between layer points and raster}
+```{r load futur raster data}
 
+```
+
+Depending on what period we chose, we need to change the name of the variables to fit with the new comparison (we need to change the name of the period for layer of points)
+```{r transform the name of the layer of points dataframe and merge dataframes}
+#if this is the period 1901_1950 then
+past_climatic_data_layer <- merge(meta_data[,c(1:2)],past_climatic_data_1901_1950,"Population")
+colnames(past_climatic_data_layer)[3:14] <- paste0(colnames(past_climatic_data_layer)[3:14], "_layer_of_points")
+
+#general data frame with the 2 methods
+data_tot_period <- data.frame(merge(past_climatic_data_layer,comp_past_climatic_data_1951_1990,"Population")) %>% 
+  dplyr::select(-c("Country.y")) 
+
+```
+
+
+```{r comparision between layer points and raster}
+#we will be able to run this when we will have the raster data.
+#We will perform the same function as before to compare both of them but the loop will be different
+
+# Loop over bioclimatic variables over layer of points vs raster
+for (var in bioclim_vars) {
+  # Extract the data for the bioclimatic variable for the two periods
+  data_subset <- data.frame(data_tot_period[, paste0(var, "_layer_of_points")], data_tot_period[, paste0(var, "_raster")]) #for each variable in bioclim_vars, we extract the two periods and created a data.frame with only these two variables. 
+  colnames(data_subset) <- c("var1", "var2")
+  
+  # Create scatterplot to compare the bioclimatic variable between the two periods
+  plot <- scatterplot_funct(data_subset, x = data_subset$var1, y = data_subset$var2, main_gp_pop,xlab=paste0(var,"_layer_of_points"),ylab=paste0(var,"raster"),title=paste("Comparison of",var,"between the 2 methods"))
+  # Print the plot
+  print(plot)
+  # Add any additional customization or saving the plot if needed
+ ggsave(file = paste0(var, "_comparison_plot_methods.png"))
+ 
+}
 ```
 
 Interpretation: 
@@ -266,33 +312,73 @@ Indeed, if the values won't change, it's not useful to take them into account be
 
 To investigate whether the values will change, we created a function: *relative_difference_climate* that is creating a new table with the difference between future and present for each specific coordinates populations for each climatic variables(e.g: (tmx08 future - tmx08 present)/tmx08present)
 
+To do so, we first need to process the future climatic data the same way we did for the past data
+```{r processing future climatic data}
+#load future climatic data
+##period 2040_2070
+Pre_past_climatic_data_point <- read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Taxus_baccata/Climatic_data/Test_script/pre_future_climatic_data.csv",h=T,sep=";",dec=",")
+
+#monthly_mean_values of past climatic data
+Pre_data_mean_future_2040_2070 <- mean_pre_climatic_data(Pre_past_climatic_data_point,6,41,Pre_past_climatic_data_point$ID) 
+
+#Calculation of the climatic variables
+######BIO
+#inital parameters
+prec_2040_2070 <- data.frame(t(Pre_data_mean_future_2040_2070 %>% dplyr::select(starts_with("prc"))))
+tmn_2040_2070 <- data.frame(t(Pre_data_mean_future_2040_2070 %>% dplyr::select(starts_with("tmn"))))
+tmx_2040_2070 <- data.frame(t(Pre_data_mean_future_2040_2070 %>% dplyr::select(starts_with("tmx"))))
+#function
+Bio1_19_all_pop_2040_2070 <- data.frame(biovars(prec_2040_2070,tmn_2040_2070,tmx_2040_2070))
+
+######Other variables
+data_2040_2070 <- Bio1_19_all_pop_2040_2070
+AHM_2040_2070 <- data.frame((data_2040_2070$bio1+10)/(data_2040_2070$bio12/1000))
+
+#Final dataset
+Future_climatic_data_2040_2070 <- data.frame(cbind(Pre_data_mean_future_2040_2070[,c("ID")],Bio1_19_all_pop_2040_2070[,c(1:5,10:15)],AHM_2040_2070));names(Future_climatic_data_2040_2070)[names(Future_climatic_data_2040_2070)=="Pre_data_mean_future_2040_2070...c..ID..."] <- "Population";names(Future_climatic_data_2040_2070)[names(Future_climatic_data_2040_2070)=="X.data_2040_2070.bio1...10...data_2040_2070.bio12.1000."] <- "AHM"
+
+#add the country information
+comp_Future_climatic_data_2040_2070 <- merge(meta_data[,c(1:2)],Future_climatic_data_2040_2070,"Population")
+colnames(comp_Future_climatic_data_2040_2070)[3:14] <- paste0(colnames(comp_Future_climatic_data_2040_2070)[3:14], "_1901_1950")
+
+##period 1901_1950
+
+
+##Past period 1901_1950
+# Past period = data.frame: comp_past_climatic_data_1901_1950 
+
+```
+
+
+
+
 ```{r change in values of variable between present and future, eval=FALSE, include=FALSE}
 
 # Calculate the difference for each climatic variable
-relative_difference_climate <- function(data_present, data_future, from,to,Groups) {
+relative_difference_climate <- function(data_present, data_future, from,to,Population,number_retained_factor) {
   climatic_columns <- names(data_present)[from:to]#select the climatic variables
   
   relative_data_difference <- (data_future[, climatic_columns] - data_present[, climatic_columns])/data_present[,climatic_columns] #calculate the difference between future values and current one for each climatic variables
   colnames(relative_data_difference) <- paste0(colnames(relative_data_difference),"_relative_difference") #add difference in the name of the columns
   
   ID_long_lat <- data_present %>% 
-    group_by(Groups) %>% #groups the row by ID
+    group_by(Population) %>% #groups the row by ID
     slice_head(n = 1) %>% #keep only the first row of each groups
-    select(c(1:3))#select only the 3 first columns
+    dplyr::select(number_retained_factor)#select only the 3 first columns
   
   #add the ID, longitude and latitude variables
-   data_difference_final <- data.frame(ID_long_lat[,c(1:3)],relative_data_difference) #-1 because ID is already in
+   data_difference_final <- data.frame(ID_long_lat[,number_retained_factor],relative_data_difference) #-1 because ID is already in
    
   return(data_difference_final)
 } 
 
-data_present <- data_present_1step#data with the current/past climatic conditions
-data_future <- data_future_1step #data with the future climatic conditions
-from <- 4 #first columns of climatic data
-to <- 18 #last columns of climatic data
-Groups <- data_present_1step$Groups #pop groups
-
-relative_data_difference<- relative_difference_climate(data_present,data_future,from,to)
+data_present <- comp_past_climatic_data_1901_1950#data with the current/past climatic conditions
+data_future <- comp_Future_climatic_data_2040_2070 #data with the future climatic conditions
+from <- 3 #first columns of climatic data
+to <- 14#last columns of climatic data
+Population <- comp_past_climatic_data_1901_1950$Country #pop groups
+number_retained_factor <- c(1,2)
+relative_data_difference<- relative_difference_climate(data_present,data_future,from,to,Population,number_retained_factor)
 
 ```
 
@@ -304,23 +390,23 @@ If a climatic variable has low change (the distance is near 0), the variables is
 ```{r graphic representation climatic difference between future and past, eval=FALSE, include=FALSE}
 
 violin_plot <- function(revelant_variables_graph,ID,regions){#may be interesting to do it by regions and not populations to better vizualise
-data_violin <- gather(revelant_variables_graph,key="revelant_variables",value="Value",-Groups,-regions)#create a dataframe for the violin graph with all the values of climatic variables in 1 columns: Value and all the different coordinates for populations for the different variables in row.
-data_violin$regions=as.factor(data_violin$regions)
+data_violin <- gather(revelant_variables_graph,key="revelant_variables",value="Value",-Population,-Country)#create a dataframe for the violin graph with all the values of climatic variables in 1 columns: Value and all the different coordinates for populations for the different variables in row.
+data_violin$Country=as.factor(data_violin$Country)
 
-p <- ggplot(data_violin, aes(x = revelant_variables_graph, y = Value)) +
+p <- ggplot(data_violin, aes(x = revelant_variables, y = Value)) +
   geom_violin(trim = FALSE) +
-  geom_point(aes(color = regions), shape = 16, position = position_jitter(seed = 1, width = 0.2)) +
+  geom_point(aes(color = Country), shape = 16, position = position_jitter(seed = 1, width = 0.2)) +
   labs(colour="Regions",x="climatic variables",y="Difference between future and past climate",title="Violin Plot of Climatic Factors by Regions")+
   theme(plot.title = element_text(hjust = 0.5))
 return(p)
 }
 
 
-revelant_variables_graph <- relative_data_difference[,c(1,2,4:18)]#selection of ID, populations and the climatic variables
-Groups <- revelant_variables_graph$Groups
-regions <-
+revelant_variables_graph <- relative_data_difference#selection of ID, populations and the climatic variables
+Groups <- past_climatic_data_1901_1950$Population
+regions <-past_climatic_data_1901_1950$Country
   
-data_violin(revelant_variables_graph,ID,regions)
+s=violin_plot(revelant_variables_graph,ID,regions)
 
 #finaly we select only certain data by doing: 
 #present
@@ -329,6 +415,40 @@ data_present_2step <- subset(data_present_1step,select= -c(...))
 #future
 data_future_2step <- subset(data_future_1step,select= -c(...))
 ```
+Here we can see that the one population has a important difference between the current and the future values so the plot is kinda messy. 
+We can decide to do the graph separately for each climatic variable. This will also enable to compare the different future prediction from different climatic models (I do not have yet this kind of information)
+
+```{r violin plot in a loop}
+#do the violin plot in a loop for each climatic variables
+
+#input data for the loop
+data <- relative_data_difference
+regions <-relative_data_difference$Country
+colnames(relative_data_difference)=c("Population","Country","bio1","bio2","bio3","bio4","bio5","bio10","bio11","bio12","bio13","bio14","bio15","AHM")
+bioclim_vars <- c("bio1", "bio2", "bio3", "bio4","bio5","bio10","bio11","bio12","bio13","bio14","bio15","AHM")
+
+#results: the loop
+for (var in bioclim_vars) {
+  data_subset <- data.frame(revelant_variables_graph[, paste0(var)]) #for each variable in bioclim_vars, we extract the two periods and created a data.frame with only these two variables. 
+  colnames(data_subset) <- c("var1")
+  # Create scatterplot to compare the bioclimatic variable between the two periods
+  plot <- ggplot(data_subset, aes(x =var,y= var1)) +#var is the values and var1 is just the name of the variable 
+  geom_violin(trim = FALSE) +
+  geom_point(aes(color = regions), shape = 16, position = position_jitter(seed = 1, width = 0.2)) +
+  labs(colour="Regions",x="climatic variables",y=paste0(var,"difference between future and past climate"),title="Violin Plot of Climatic Factors by Regions")+
+  theme(plot.title = element_text(hjust = 0.5))
+  # Print the plot
+  print(plot)
+  # Add any additional customization or saving the plot if needed
+ 
+  ######"
+    #If we want to add values from different climatic models, we need to do a thing like thats: data_violin <- gather(revelant_variables_graph,key="revelant_variables",value="Value",-Population,-Country)#create a dataframe for the violin graph with all the values of climatic variables in 1 columns: Value and all the different coordinates for populations for the different variables in row.
+  #the different values of bio1 for example from different models should be in the same dataframe -> 1 data frame per bioclimatic variables -> maybe we can do a loop for that too. 
+}
+
+```
+If, we want to add the values for bio1 and other bio from different climatic models, we need to do like in the function violin plot by creating a columns with the nameof the different models and the values in the same columns. 
+
 Interpretation:...
 Conclusion: ...
 
@@ -350,9 +470,9 @@ To do so, we decided to keep only the variables not too correlated (<absolute co
 ```{r multicollinearity between variables, eval=FALSE, include=FALSE}
 #function to do it
 #matrix of correlation
-correlation_function <-function(data,threshold){
-    data_correlation <- subset(data,select= -c(Groups,Longitude,Latitude)) 
-      rownames(data_correlation) <- data$ID
+correlation_function <-function(data,threshold,discard_variables){
+    data_correlation <- subset(data,select= -c(Population,Country)) 
+      rownames(data_correlation) <- data$Populations
       correlation <- cor(data_correlation)
   correlation[abs(correlation) <= threshold] <- 0
 corr_plot <- corrplot(correlation, method = "number", addrect = 2, col = c("red", "white", "red"), type = "lower", tl.col = "black", tl.cex = 0.6, number.cex = 0.6)
@@ -361,10 +481,10 @@ corr_plot <- corrplot(correlation, method = "number", addrect = 2, col = c("red"
 
 
 #correlation past/present
-data_present <- data_present_2step #we use the dataset without the variables we discarded previously
+data_present <- comp_past_climatic_data_1901_1950 #we use the dataset without the variables we discarded previously
 threshold <- 0.7
-correlation_past <-correlation_function(data_present,threshold)
-
+correlation_past <-correlation_function(data_present,threshold,discard_variables)
+discard_variables <- Population,Country
 
 #correlation future
 data_future <- data_future_2step
@@ -375,10 +495,28 @@ correlation_fut <-correlation_function(data_future,threshold)
 Interpretation:
 Conclusion:
 
+```{r retaining variables based on corrplot}
+
+data_past_climatic_data <- comp_past_climatic_data_1901_1950[,c()]
+data_future_climatic_data_2040_2070 <- comp_Future_climatic_data_2040_2070[,c()]
+```
+
       iiii. VIF
-Finally, we tested for the variant inflation factor (VIF) using **...** function to confirm that there is no over collinearity between remaining variables.
+Finally, we tested for the variant inflation factor (VIF) using **...** function to confirm that there is no over collinearity between the remaining variables. To do so, we need the genotyic data
 
 ```{r VIF}
+#to perfom a vif we need the genotypic data and to perfom a linear regression between the genetic data and all the remaining climatic variables
+model_data <- cbind(genotypic_data, comp_past_climatic_data_1901_1950[,c(3:14)])
+
+# Fit the linear regression model
+model <- lm(genotypic_data ~ ., data = model_data)
+
+#we can then perfom the VIF
+vif.val <- vif(model) # create vector of VIF values
+pdf(paste(path1,codesp[sp],"_SamplingLocationsEnvDatExtracted_VIF_Plot.pdf",sep=""), width=8.27*0.6, height=8.27*0.6)
+par(oma=c(2,3,0.5,0.5))
+barplot(vif.val,  xlab="VIF values", horiz=T, col="gold", las=1, xlim=c(0,10)) # plot horizontal bar charts to display each VIF values
+abline(v=5, lwd=3, lty=2)
 
 ```
 Interpretation: ...
@@ -388,8 +526,53 @@ Conclusion: ...
     **4. Comparison of the retained climatic values between populations**
 
 Knowing the climatic range of the sampled populations is important to **have an idea about the selective pressure** that could arise between populations. Also, knowing the repartition of the different regions along the climatic niche is informative regarding the pattern of GEA identified. 
-We performed analysis to visualise the climatic niche (distribution of values (not taking into acount the populations level but species level) for each climatic variables) and also the violin plot with point represent populations, color represent region to visualize the repartition of populations across range of climatic values for each variable
+We performed analysis to visualise the climatic niche (distribution of values (not taking into account the populations level but species level) for each climatic variables) and also the violin plot with point represent populations, color represent region to visualize the repartition of populations across range of climatic values for each variable.
+We already performed this analysis but now we perfomed it only on the retaining climatic variables
 ```{r comparison of past climatic values between populations}
+
+
+#################################################################################################################################
+# the real dataframe to use if data_past_climatic_data but for now i do have it so i use the one without removing the variables
+#################################################################################################################################
+
+
+##to compare all the variables in the same graph, we need to scale them or do one graph per values, we will do both:
+##1 variable per graph: 
+#we already did that in the section: violin plot in a loop
+data <- comp_past_climatic_data_1901_1950
+revelant_variables_graph <- comp_past_climatic_data_1901_1950[,-c(1,2)]
+regions <-comp_past_climatic_data_1901_1950$Country
+colnames(comp_past_climatic_data_1901_1950)=c("Population","Country","bio1","bio2","bio3","bio4","bio5","bio10","bio11","bio12","bio13","bio14","bio15","AHM")
+bioclim_vars <- c("bio1", "bio2", "bio3", "bio4","bio5","bio10","bio11","bio12","bio13","bio14","bio15","AHM")
+
+#results: the loop
+for (var in bioclim_vars) {
+  data_subset <- data.frame(revelant_variables_graph[, paste0(var)]) #for each variable in bioclim_vars, we extract the two periods and created a data.frame with only these two variables. 
+  colnames(data_subset) <- c("var1")
+  # Create scatterplot to compare the bioclimatic variable between the two periods
+  plot <- ggplot(data_subset, aes(x =var,y= var1)) +#var is the values and var1 is just the name of the variable 
+  geom_violin(trim = FALSE) +
+  geom_point(aes(color = regions), shape = 16, position = position_jitter(seed = 1, width = 0.2)) +
+  labs(colour="Regions",x="climatic variables",y=paste0(var,"difference between future and past climate"),title="Violin Plot of Climatic Factors by Regions")+
+  theme(plot.title = element_text(hjust = 0.5))
+  # Print the plot
+  print(plot)
+  # Add any additional customization or saving the plot if needed
+}
+
+
+
+##scale 
+revelant_variables_scale <- data.frame(scale(comp_past_climatic_data_1901_1950[,-c(1,2)]))# scale the climatic variables of interest
+
+#we using the violin_plot function 
+revelant_variables_graph <- data.frame(comp_past_climatic_data_1901_1950[,c(1,2)],revelant_variables_scale)#selection of ID, populations and the climatic variables
+Populations <- revelant_variables_graph$Population
+regions <-revelant_variables_graph$Country
+
+
+violin_plot(revelant_variables_graph,ID,regions)
+
 
 ```
 Interpretations: 
@@ -397,16 +580,58 @@ Interpretations:
 We also did it for the future:
 ```{r comparison of future climatic values between populations}
 
+#################################################################################################################################
+# the real dataframe to use if data_past_climatic_data but for now i do have it so i use the one without removing the variables
+#################################################################################################################################
+
+#it's the same thing that above but for future data
+
+##1 variable per graph: 
+
+data <- comp_future_climatic_data_2040_2070
+revelant_variables_graph <- comp_future_climatic_data_2040_2070[,-c(1,2)]
+regions <-comp_future_climatic_data_2040_2070$Country
+colnames(comp_future_climatic_data_2040_2070)=c("Population","Country","bio1","bio2","bio3","bio4","bio5","bio10","bio11","bio12","bio13","bio14","bio15","AHM")
+bioclim_vars <- c("bio1", "bio2", "bio3", "bio4","bio5","bio10","bio11","bio12","bio13","bio14","bio15","AHM")
+
+#results: the loop
+for (var in bioclim_vars) {
+  data_subset <- data.frame(revelant_variables_graph[, paste0(var)]) #for each variable in bioclim_vars, we extract the two periods and created a data.frame with only these two variables. 
+  colnames(data_subset) <- c("var1")
+  # Create scatterplot to compare the bioclimatic variable between the two periods
+  plot <- ggplot(data_subset, aes(x =var,y= var1)) +#var is the values and var1 is just the name of the variable 
+  geom_violin(trim = FALSE) +
+  geom_point(aes(color = regions), shape = 16, position = position_jitter(seed = 1, width = 0.2)) +
+  labs(colour="Regions",x="climatic variables",y=paste0(var,"difference between future and past climate"),title="Violin Plot of Climatic Factors by Regions")+
+  theme(plot.title = element_text(hjust = 0.5))
+  # Print the plot
+  print(plot)
+  # Add any additional customization or saving the plot if needed
+}
+
+
+
+##scale 
+revelant_variables_scale <- data.frame(scale(comp_future_climatic_data_2040_2070[,-c(1,2)]))# scale the climatic variables of interest
+
+#we using the violin_plot function 
+revelant_variables_graph <- data.frame(comp_future_climatic_data_2040_2070[,c(1,2)],revelant_variables_scale)#selection of ID, populations and the climatic variables
+Populations <- revelant_variables_graph$Population
+regions <-revelant_variables_graph$Country 
+
+
+violin_plot(revelant_variables_graph,ID,regions)
+
 ```
 Interpretations: 
 
     **5. Comparison of the past retained climatic values between populations**
     
-Multiple climatic models that predict the future climate are available. Choosing one of them could be a challenge because sometimes the difference in prediction are important. To avoid bias by selecting only one climatic model that could be an extrem, we selected 3 or 5 of them for the future data. 
+Multiple climatic models that predict the future climate are available. Choosing one of them could be a challenge because sometimes the difference in prediction are important. To avoid bias by selecting only one climatic model that could be an extreme, we selected 3 or 5 of them for the future data. 
 We want to compare them to see if there is a lot a differences in predictions between models. 
 To do so, we performed a ... see paper of benjamin or felix showing that
 ```{r Comparison of the climatic models prediction}
-
+#look above,I explained how we can modify the loop of violin plot to compare the values of predictions for the different climatic models into the future 
 ```
 
     **6. Standardization of the retained climatic values**
