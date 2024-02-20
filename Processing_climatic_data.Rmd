@@ -45,10 +45,8 @@ For other variables not directly linked to tmin, tmax, precipitation or bioclim 
 First of all, we load the tmin, tmax and preci data for the 2 periods: 1901-1950 and 1951-1990.
 Are we loading layer point dataset and raster?
 
-```{r loading climatic data}
+```{r loading past climatic data layer points}
 Pre_past_climatic_data_point <- read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Taxus_baccata/Climatic_data/Test_script/pre_climatic_data.csv",h=T,sep=";",dec=",")
-
-#Pre_past_climatic_data_raster <-
 
 ```
 
@@ -121,7 +119,6 @@ prec_1951_1990 <- data.frame(t(Pre_data_mean_period_1951_1990 %>% dplyr::select(
 tmn_1951_1990 <- data.frame(t(Pre_data_mean_period_1951_1990 %>% dplyr::select(starts_with("tmn"))))
 tmx_1951_1990 <- data.frame(t(Pre_data_mean_period_1951_1990 %>% dplyr::select(starts_with("tmx"))))
 
-
 #function
 Bio1_19_all_pop_1901_1950 <- data.frame(biovars(prec_1901_1950,tmn_1901_1950,tmx_1901_1950))
 Bio1_19_all_pop_1951_1990 <- data.frame(biovars(prec_1951_1990,tmn_1951_1990,tmx_1951_1990))
@@ -189,50 +186,64 @@ comp_past_climatic_data_1951_1990 <- merge(meta_data[,c(1:2)],past_climatic_data
 colnames(comp_past_climatic_data_1951_1990)[3:14] <- paste0(colnames(comp_past_climatic_data_1951_1990)[3:14], "_1951_1990")
 
 
-
-data_tot_period <- data.frame(merge(comp_past_climatic_data_1901_1950,comp_past_climatic_data_1951_1990,"Population")[,-15])
-
-x=lm(comp_past_climatic_data_1901_1950[,c(3)]~comp_past_climatic_data_1951_1990[,c(3)])
-plot(comp_past_climatic_data_1901_1950[,c(3)],comp_past_climatic_data_1951_1990[,c(3)])
-
-b <- ggplot(aes(x = comp_past_climatic_data_1901_1950[,c(3)], y = comp_past_climatic_data_1951_1990[,c(3)]))
+#general data frame with the 2 periods
+data_tot_period <- data.frame(merge(comp_past_climatic_data_1901_1950,comp_past_climatic_data_1951_1990,"Population")) %>% 
+  dplyr::select(-c("Country.y")) 
 
 ```
 
+In order to compare the climatic variables between the two periods, we will perform a scatterplot between the both period for each climatic variables. We will be able to see if the values are consistent across periods and also the differences between and within populations along the climatic variables.
 
-```{r}
-
-main_gp_pop <- comp_past_climatic_data_1901_1950$Country
-xlist=list(colnames(comp_past_climatic_data_1901_1950)[3:14])
-x=data_tot_period$bio1_1901_1950
-y=data_tot_period$bio1_1951_1990
-data=data_tot_period
-
-
+```{r function to compare the two periods}
+#we created a function to perform the scatterplot 
 ##function
-scatterplot_funct <- function(data,x,y,main_gp_pop){
+scatterplot_funct <- function(data,x,y,main_gp_pop,xlab,ylab,title){
 ggplot(data,aes(x=x,y=y)) +
   geom_point(aes(color=main_gp_pop),size=3)+
   scale_colour_manual(name="Main gene pool",
                       values = c("orangered3","gold2","darkorchid3","navyblue","turquoise2","green3","blue","red","black","gray","orange")) +
-  geom_abline(intercept = 0, slope = 1, color="gray60") 
-}
+  geom_abline(intercept = 0, slope = 1, color="gray60")+
+    xlab(xlab)+
+    ylab(ylab)+
+    ggtitle(title)+
+    theme_set(theme_bw())
   
+}
 
-lapply(xlist, function(x) scatterplot_funct(data=data_tot_period,x=data_tot_period[,c(3:14)],y=data_tot_period[,c(15:26)],main_gp_pop=data_tot_period$Country.x))
+#Test of the function for 1 variable
+##initial values
+main_gp_pop <- comp_past_climatic_data_1901_1950$Country #color the points by region or country
+x <- data_tot_period$bio1_1901_1950 
+y <- data_tot_period$bio1_1951_1990
+data <- data_tot_period
 
-d <- scatterplot_funct(data,x,y,scatterplot_funct)
+##results
 s <- scatterplot_funct(data_tot_period,data_tot_period$bio1_1901_1950,data_tot_period$bio1_1951_1990,main_gp_pop)
 ```
-```{r for loop for the scatterplot_funct}
+
+The goal is to compare the values of each variables between periods. We created a loop to perform the *scatterplot_funct* function that we just created.
+
+```{r loop for the scatterplot_funct to compare the two periods}
+bioclim_vars <- c("bio1", "bio2", "bio3", "bio4","bio5","bio10","bio11","bio12","bio13","bio14","bio15","AHM")# Add all bioclimatic variable names that we will perform the scatter_plot function
 
 
-for(i in 1:data_tot_period[,c(3:26)]{
+# Loop over bioclimatic variables between periods
+for (var in bioclim_vars) {
+  # Extract the data for the bioclimatic variable for the two period
+  data_subset <- data.frame(data_tot_period[, paste0(var, "_1901_1950")], data_tot_period[, paste0(var, "_1951_1990")]) #for each variable in bioclim_vars, we extract the two periods and created a data.frame with only these two variables. 
+  colnames(data_subset) <- c("var1", "var2")
   
+  # Create scatterplot to compare the bioclimatic variable between the two periods
+  plot <- scatterplot_funct(data_subset, x = data_subset$var1, y = data_subset$var2, main_gp_pop,xlab=paste0(var,"_1901_1950"),ylab=paste0(var,"_1951_1990"),title=paste("Comparison of",var,"between the 2 periods"))
+  # Print the plot
+  print(plot)
+  # Add any additional customization or saving the plot if needed
+ ggsave(file = paste0(var, "_comparison_plot_raster.png"))
+ 
 }
-    )
-```
 
+
+```
 
 
 
@@ -247,8 +258,41 @@ One of the other main issues is that we have 2 types of data with different accu
 During the study, we would calculate indexes with values from layer points and raster. We want to test if the values are similar and can be interchangeably applied. 
 To do so, we calculated the difference between the values from layer of points and raster for the same populations/pixel.
 
-```{r comparision between layer points and raster}
+```{r load futur raster data}
 
+```
+
+Depending on what period we chose, we need to change the name of the variables to fit with the new comparison (we need to change the name of the period for layer of points)
+```{r transform the name of the layer of points dataframe and merge dataframes}
+#if this is the period 1901_1950 then
+comp_past_climatic_data_1901_1950 <- merge(meta_data[,c(1:2)],past_climatic_data_1901_1950,"Population")
+colnames(comp_past_climatic_data_1901_1950)[3:14] <- paste0(colnames(comp_past_climatic_data_1901_1950)[3:14], "_layer_of_points")
+
+#general data frame with the 2 methods
+data_tot_period <- data.frame(merge(comp_past_climatic_data_1901_1950,comp_past_climatic_data_1951_1990,"Population")) %>% 
+  dplyr::select(-c("Country.y")) 
+
+```
+
+
+```{r comparision between layer points and raster}
+#we will be able to run this when we will have the raster data.
+#We will perform the same function as before to compare both of them but the loop will be different
+
+# Loop over bioclimatic variables over layer of points vs raster
+for (var in bioclim_vars) {
+  # Extract the data for the bioclimatic variable for the two period
+  data_subset <- data.frame(data_tot_period[, paste0(var, "_layer_of_points")], data_tot_period[, paste0(var, "_raster")]) #for each variable in bioclim_vars, we extract the two periods and created a data.frame with only these two variables. 
+  colnames(data_subset) <- c("var1", "var2")
+  
+  # Create scatterplot to compare the bioclimatic variable between the two periods
+  plot <- scatterplot_funct(data_subset, x = data_subset$var1, y = data_subset$var2, main_gp_pop,xlab=paste0(var,"_layer_of_points"),ylab=paste0(var,"raster"),title=paste("Comparison of",var,"between the 2 methods"))
+  # Print the plot
+  print(plot)
+  # Add any additional customization or saving the plot if needed
+ ggsave(file = paste0(var, "_comparison_plot_methods.png"))
+ 
+}
 ```
 
 Interpretation: 
@@ -265,6 +309,40 @@ Indeed, if the values won't change, it's not useful to take them into account be
 (We could also think that if the climatic values for a specific climatic variables is quit homogeneous along the area of the species, it's not relevant because we might not expect difference in adaptation for this specific variable among populations.)
 
 To investigate whether the values will change, we created a function: *relative_difference_climate* that is creating a new table with the difference between future and present for each specific coordinates populations for each climatic variables(e.g: (tmx08 future - tmx08 present)/tmx08present)
+
+To do so, we first need to process the future climatic data the same way we did for the past data
+```{r processing future climatic data}
+#load future climatic data
+##period 2040_2070
+Pre_past_climatic_data_point <- read.csv("C:/Users/tfrancisco/Documents/Thèse/Data/Espèces/Taxus_baccata/Climatic_data/Test_script/pre_future_climatic_data.csv",h=T,sep=";",dec=",")
+
+#monthly_mean_values of past climatic data
+Pre_data_mean_future_2040_2070 <- mean_pre_climatic_data(Pre_past_climatic_data_point,6,41,Pre_past_climatic_data_point$ID) 
+
+#Calculation of the climatic variables
+######BIO
+#inital parameters
+prec_2040_2070 <- data.frame(t(Pre_data_mean_future_2040_2070 %>% dplyr::select(starts_with("prc"))))
+tmn_2040_2070 <- data.frame(t(Pre_data_mean_future_2040_2070 %>% dplyr::select(starts_with("tmn"))))
+tmx_2040_2070 <- data.frame(t(Pre_data_mean_future_2040_2070 %>% dplyr::select(starts_with("tmx"))))
+#function
+Bio1_19_all_pop_2040_2070 <- data.frame(biovars(prec_2040_2070,tmn_2040_2070,tmx_2040_2070))
+
+######Other variables
+data_2040_2070 <- Bio1_19_all_pop_2040_2070
+AHM_2040_2070 <- data.frame((data_2040_2070$bio1+10)/(data_2040_2070$bio12/1000))
+
+#Final dataset
+Future_climatic_data_2040_2070 <- data.frame(cbind(Pre_data_mean_future_2040_2070[,c("ID")],Bio1_19_all_pop_2040_2070[,c(1:5,10:15)],AHM_2040_2070));names(Future_climatic_data_2040_2070)[names(Future_climatic_data_2040_2070)=="Pre_data_mean_future_2040_2070...c..ID..."] <- "Population";names(Future_climatic_data_2040_2070)[names(Future_climatic_data_2040_2070)=="X.data_2040_2070.bio1...10...data_2040_2070.bio12.1000."] <- "AHM"
+
+```
+
+#########A FAIRE########################
+#######################################
+####################################
+
+
+
 
 ```{r change in values of variable between present and future, eval=FALSE, include=FALSE}
 
